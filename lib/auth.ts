@@ -36,6 +36,7 @@ export const signUp = async (email: string, password: string, displayName: strin
       data: {
         display_name: displayName,
         avatar_url: avatarUrl,
+        updated_at: new Date().toISOString(),
       },
     },
   })
