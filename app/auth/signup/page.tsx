@@ -30,6 +30,7 @@ export default function SignUpPage() {
     const { data, error } = await signUp(email, password, displayName)
 
     if (error) {
+      console.error("Full signup error:", error) // Log the full error for more details
       setError(error.message)
       setLoading(false)
     } else if (data.user && !data.session) {
