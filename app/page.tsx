@@ -53,7 +53,7 @@ export default function HomePage() {
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Learn from leading mathematicians in specialized courses designed for advanced undergraduates
+                  Learn from leading mathematicians in specialized courses designed for undergraduates
                 </CardDescription>
               </CardContent>
             </Card>
@@ -89,7 +89,7 @@ export default function HomePage() {
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Follow a carefully planned curriculum with daily lectures and interactive sessions
+                  Follow a carefully planned curriculum with compact learning pace
                 </CardDescription>
               </CardContent>
             </Card>
@@ -121,16 +121,16 @@ export default function HomePage() {
               },
               {
                 title: "Number Theory",
-                description:
-                  "Elementary and analytic number theory, including prime numbers and Diophantine equations.",
+                description: "Elementary and analytic number theory, including prime numbers and Diophantine equations.",
               },
               {
                 title: "Graph Theory",
-                description: "Study of graphs, networks, and their applications in computer science and mathematics.",
+                description: "Study of graphs, networks, and their applications in mathematics.",
               },
               {
                 title: "Machine Learning",
-                description: "Introduction to statistical learning, neural networks, and modern AI techniques.",
+                description:
+                  "Introduction to the mathematical methods used in Machine Learning and AI.",
               },
             ].map((course, index) => (
               <Card key={index} className="h-full">
@@ -153,7 +153,7 @@ export default function HomePage() {
             Ready to Begin Your Mathematical Journey?
           </h2>
           <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-            Join hundreds of motivated students in this transformative summer experience
+            Join motivated students in this transformative summer experience
           </p>
           <Link href="/auth/signup">
             <Button size="lg" variant="secondary">
