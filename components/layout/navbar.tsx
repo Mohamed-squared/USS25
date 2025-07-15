@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { BookOpen, Calendar, Home, Trophy, User, Settings, LogOut, Menu, X } from "lucide-react"
+import { BookOpen, Calendar, Home, Trophy, User, Settings, LogOut, Menu, X, Eye } from "lucide-react"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 
 export function Navbar() {
@@ -34,6 +34,7 @@ export function Navbar() {
     { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
   ]
 
+  // Guest mode navigation (can view everything but not participate)
   if (!user) {
     return (
       <nav className="bg-white dark:bg-gray-900 shadow-sm border-b">
@@ -44,20 +45,75 @@ export function Navbar() {
                 USS25
               </Link>
             </div>
+
+            {/* Guest Navigation */}
+            <div className="hidden md:flex items-center space-x-8">
+              {navigation.map((item) => (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className="flex items-center space-x-1 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.name}</span>
+                </Link>
+              ))}
+            </div>
+
             <div className="flex items-center space-x-4">
+              {/* Theme Toggle */}
+              <ThemeToggle />
+
+              {/* Guest Mode Indicator */}
+              <div className="hidden sm:flex items-center space-x-2 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full">
+                <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Guest Mode</span>
+              </div>
+
               <Link href="/auth/signin">
                 <Button variant="ghost">Sign In</Button>
               </Link>
               <Link href="/auth/signup">
                 <Button>Sign Up</Button>
               </Link>
+
+              {/* Mobile menu button */}
+              <Button variant="ghost" className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+                {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </Button>
             </div>
           </div>
+
+          {/* Mobile Navigation for Guests */}
+          {mobileMenuOpen && (
+            <div className="md:hidden">
+              <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                {navigation.map((item) => (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white block px-3 py-2 rounded-md text-base font-medium"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span>{item.name}</span>
+                  </Link>
+                ))}
+                <div className="flex items-center space-x-2 px-3 py-2">
+                  <Eye className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                    Guest Mode - Sign in to participate
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </nav>
     )
   }
 
+  // Authenticated user navigation
   return (
     <nav className="bg-white dark:bg-gray-900 shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
