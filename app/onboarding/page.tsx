@@ -18,7 +18,7 @@ interface Course {
 }
 
 export default function OnboardingPage() {
-  const { user, profile } = useAuth()
+  const { user, profile, loading: authLoading } = useAuth()
   const router = useRouter()
   const [courses, setCourses] = useState<Course[]>([])
   const [selectedCourses, setSelectedCourses] = useState<string[]>([])
@@ -27,13 +27,17 @@ export default function OnboardingPage() {
   const [error, setError] = useState("")
 
   useEffect(() => {
-    if (!user) {
-      router.push("/auth/signin")
-      return
+    // Wait for the auth provider to finish loading
+    if (!authLoading) {
+      // If auth is done and there's still no user, redirect to signin
+      if (!user) {
+        router.push("/auth/signin")
+      } else {
+        // If there is a user, fetch the courses
+        fetchCourses()
+      }
     }
-
-    fetchCourses()
-  }, [user, router])
+  }, [user, authLoading, router])
 
   const fetchCourses = async () => {
     try {
@@ -78,7 +82,7 @@ export default function OnboardingPage() {
     }
   }
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
