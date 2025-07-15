@@ -28,12 +28,14 @@ export const getCurrentProfile = async (): Promise<Profile | null> => {
 }
 
 export const signUp = async (email: string, password: string, displayName: string) => {
+  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: {
         display_name: displayName,
+        avatar_url: avatarUrl,
       },
     },
   })
