@@ -2,8 +2,8 @@
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO profiles (id, display_name)
-    VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)));
+    INSERT INTO profiles (id, display_name, role)
+    VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)), 'student');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

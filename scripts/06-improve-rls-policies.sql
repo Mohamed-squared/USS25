@@ -1,17 +1,46 @@
--- Enable Row Level Security
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE enrollments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE course_organizers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE course_materials ENABLE ROW LEVEL SECURITY;
-ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE schedule ENABLE ROW LEVEL SECURITY;
+-- Migration script to improve Row Level Security policies
+-- This can be run safely after the initial setup
+
+-- Drop existing policies to recreate them with improvements
+DROP POLICY IF EXISTS "Users can view all profiles" ON profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+DROP POLICY IF EXISTS "Anyone can view courses" ON courses;
+DROP POLICY IF EXISTS "Only main organizers can manage courses" ON courses;
+DROP POLICY IF EXISTS "Main organizers can manage courses" ON courses;
+DROP POLICY IF EXISTS "Users can view enrollments" ON enrollments;
+DROP POLICY IF EXISTS "Users can enroll themselves" ON enrollments;
+DROP POLICY IF EXISTS "Users can unenroll themselves" ON enrollments;
+DROP POLICY IF EXISTS "Organizers can manage enrollments" ON enrollments;
+DROP POLICY IF EXISTS "Anyone can view course organizers" ON course_organizers;
+DROP POLICY IF EXISTS "Only main organizers can assign course organizers" ON course_organizers;
+DROP POLICY IF EXISTS "Main organizers can assign course organizers" ON course_organizers;
+DROP POLICY IF EXISTS "Anyone can view posts" ON posts;
+DROP POLICY IF EXISTS "Authenticated users can create posts" ON posts;
+DROP POLICY IF EXISTS "Authors can update their posts" ON posts;
+DROP POLICY IF EXISTS "Authors can update own posts" ON posts;
+DROP POLICY IF EXISTS "Authors and organizers can delete posts" ON posts;
+DROP POLICY IF EXISTS "Anyone can view comments" ON comments;
+DROP POLICY IF EXISTS "Authenticated users can create comments" ON comments;
+DROP POLICY IF EXISTS "Authors can update their comments" ON comments;
+DROP POLICY IF EXISTS "Authors can update own comments" ON comments;
+DROP POLICY IF EXISTS "Authors and organizers can delete comments" ON comments;
+DROP POLICY IF EXISTS "Anyone can view course materials" ON course_materials;
+DROP POLICY IF EXISTS "Enrolled users can upload student contributions" ON course_materials;
+DROP POLICY IF EXISTS "Uploaders and organizers can delete materials" ON course_materials;
+DROP POLICY IF EXISTS "Users can view their own credit transactions" ON credit_transactions;
+DROP POLICY IF EXISTS "Users can view own credit transactions" ON credit_transactions;
+DROP POLICY IF EXISTS "Organizers can view all credit transactions" ON credit_transactions;
+DROP POLICY IF EXISTS "Organizers can create credit transactions" ON credit_transactions;
+DROP POLICY IF EXISTS "Anyone can view schedule" ON schedule;
+DROP POLICY IF EXISTS "Only main organizers can manage schedule" ON schedule;
+DROP POLICY IF EXISTS "Main organizers can manage schedule" ON schedule;
+
+-- Recreate improved policies
 
 -- Profiles policies
 CREATE POLICY "Users can view all profiles" ON profiles FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
 -- Courses policies
 CREATE POLICY "Anyone can view courses" ON courses FOR SELECT USING (true);
