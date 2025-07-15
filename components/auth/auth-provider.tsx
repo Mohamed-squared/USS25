@@ -69,11 +69,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     // Listen for auth changes. The listener is called immediately with the current session.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
       handleAuthChange(session)
     })
 
-    return () => subscription.unsubscribe()
+    return () => subscription?.unsubscribe()
   }, [])
 
   return <AuthContext.Provider value={{ user, profile, loading, refreshProfile }}>{children}</AuthContext.Provider>
