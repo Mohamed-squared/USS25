@@ -27,17 +27,20 @@ export default function SignUpPage() {
     setLoading(true)
     setError("")
 
-    const { data, error } = await signUp(email, password, displayName)
+    try {
+      const { data, error } = await signUp(email, password, displayName)
 
-    if (error) {
-      console.error("Full signup error:", error) // Log the full error for more details
-      setError(error.message)
+      if (error) {
+        setError(error.message)
+      } else if (data.user && !data.session) {
+        setSuccess(true)
+      } else {
+        router.push("/onboarding")
+      }
+    } catch (e: any) {
+      setError(e.message || "An unexpected error occurred.")
+    } finally {
       setLoading(false)
-    } else if (data.user && !data.session) {
-      setSuccess(true)
-      setLoading(false)
-    } else {
-      router.push("/onboarding")
     }
   }
 
