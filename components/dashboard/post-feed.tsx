@@ -198,12 +198,14 @@ export function PostFeed({ courseId, title = "General Discussion" }: PostFeedPro
               <CardHeader className="pb-3">
                 <div className="flex items-start space-x-3">
                   <Avatar>
-                    <AvatarImage src={post.author.avatar_url || ""} />
-                    <AvatarFallback>{post.author.display_name.charAt(0).toUpperCase()}</AvatarFallback>
+                    <AvatarImage src={post.author?.avatar_url || ""} />
+                    <AvatarFallback>{post.author?.display_name?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
                     <div className="flex items-center space-x-2">
-                      <h4 className="font-semibold">{post.author.display_name}</h4>
+                      <h4 className="font-semibold">
+                        {post.author?.display_name || "Anonymous User"}
+                      </h4>
                       <span className="text-sm text-gray-500">
                         {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
                       </span>
@@ -232,15 +234,17 @@ export function PostFeed({ courseId, title = "General Discussion" }: PostFeedPro
                       {post.comments.map((comment) => (
                         <div key={comment.id} className="flex space-x-3">
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src={comment.author.avatar_url || ""} />
+                            <AvatarImage src={comment.author?.avatar_url || ""} />
                             <AvatarFallback className="text-xs">
-                              {comment.author.display_name.charAt(0).toUpperCase()}
+                              {comment.author?.display_name?.charAt(0).toUpperCase() || "U"}
                             </AvatarFallback>
                           </Avatar>
                           <div className="flex-1">
                             <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
                               <div className="flex items-center space-x-2 mb-1">
-                                <span className="font-medium text-sm">{comment.author.display_name}</span>
+                                <span className="font-medium text-sm">
+                                  {comment.author?.display_name || "Anonymous User"}
+                                </span>
                                 <span className="text-xs text-gray-500">
                                   {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
                                 </span>

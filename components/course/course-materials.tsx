@@ -220,7 +220,7 @@ export function CourseMaterials({ courseId, materialType, canUpload, title }: Co
                       </Badge>
                     </div>
                     <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      <span>By {material.uploader.display_name}</span>
+                      <span>By {material.uploader?.display_name || "Anonymous"}</span>
                       <div className="flex items-center">
                         <Calendar className="h-4 w-4 mr-1" />
                         {format(new Date(material.created_at), "MMM d, yyyy")}
