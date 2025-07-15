@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { createContext, useContext, useEffect, useState } from "react"
-import type { User } from "@supabase/supabase-js"
+import type { User, Session } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
 import type { Profile } from "@/lib/auth"
 
@@ -35,9 +35,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single()
-
-    setProfile(data)
+    try {
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
+      if (error && error.code !== "PGRST116") throw error
+      setProfile(data || null)
+    } catch (error) {
+      console.error("Error fetching profile:", error)
+      setProfile(null)
+    }
   }
 
   const refreshProfile = async () => {
@@ -47,27 +52,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
+    const handleAuthChange = async (session: Session | null) => {
+      try {
+        const currentUser = session?.user ?? null
+        setUser(currentUser)
+        if (currentUser) {
+          await fetchProfile(currentUser.id)
+        } else {
+          setProfile(null)
+        }
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
-    })
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => handleAuthChange(session))
 
     // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        await fetchProfile(session.user.id)
-      } else {
-        setProfile(null)
-      }
-      setLoading(false)
-    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => handleAuthChange(session))
 
     return () => subscription.unsubscribe()
   }, [])
