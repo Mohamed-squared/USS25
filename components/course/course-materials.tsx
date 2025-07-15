@@ -10,8 +10,19 @@ import { Label } from "@/components/ui/label"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Upload, Download, Calendar } from "lucide-react"
+import { FileText, Upload, Download, Calendar, Trash } from "lucide-react"
 import { format } from "date-fns"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 interface Material {
   id: string
@@ -19,6 +30,7 @@ interface Material {
   file_url: string
   material_type: "organizer_note" | "recorded_lecture" | "student_contribution"
   created_at: string
+  uploader_id: string // Add uploader_id for permission check
   uploader: {
     display_name: string
   }
@@ -29,10 +41,17 @@ interface CourseMaterialsProps {
   materialType: "organizer_note" | "recorded_lecture" | "student_contribution"
   canUpload: boolean
   title: string
+  isOrganizerForCourse: boolean // Prop to indicate if current user is organizer for this course
 }
 
-export function CourseMaterials({ courseId, materialType, canUpload, title }: CourseMaterialsProps) {
-  const { user } = useAuth()
+export function CourseMaterials({
+  courseId,
+  materialType,
+  canUpload,
+  title,
+  isOrganizerForCourse,
+}: CourseMaterialsProps) {
+  const { user, profile } = useAuth()
   const [materials, setMaterials] = useState<Material[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -54,6 +73,7 @@ export function CourseMaterials({ courseId, materialType, canUpload, title }: Co
           file_url,
           material_type,
           created_at,
+          uploader_id,
           uploader:profiles(display_name)
         `)
         .eq("course_id", courseId)
@@ -76,7 +96,7 @@ export function CourseMaterials({ courseId, materialType, canUpload, title }: Co
     try {
       // Upload file to Supabase Storage
       const fileExt = uploadFile.name.split(".").pop()
-      const fileName = `${courseId}/${Date.now()}.${fileExt}`
+      const fileName = `${courseId}/${Date.now()}.${fileExt}` // Store files under courseId subfolder
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("course-materials")
@@ -98,6 +118,16 @@ export function CourseMaterials({ courseId, materialType, canUpload, title }: Co
 
       if (insertError) throw insertError
 
+      // Award credits for sharing material (student contributions only)
+      if (materialType === "student_contribution") {
+        await supabase.from("credit_transactions").insert({
+          user_id: user.id,
+          amount: 10,
+          reason: `Shared material in ${title}: ${uploadTitle.trim()}`,
+          issuer_id: user.id, // Self-issued credit
+        })
+      }
+
       setUploadTitle("")
       setUploadFile(null)
       setUploadDialogOpen(false)
@@ -106,6 +136,30 @@ export function CourseMaterials({ courseId, materialType, canUpload, title }: Co
       console.error("Error uploading material:", error)
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handleDeleteMaterial = async (materialId: string, fileUrl: string, uploaderId: string) => {
+    if (!user || (!isOrganizerForCourse && profile?.role !== "main_organizer" && uploaderId !== user.id)) {
+      alert("You do not have permission to delete this material.")
+      return
+    }
+
+    try {
+      // Extract file path from URL
+      const fileName = fileUrl.split("/").pop()
+      const folderName = fileUrl.split("/")[fileUrl.split("/").length - 2] // Assumes URL structure .../bucket/courseId/filename
+      const filePathInStorage = `${folderName}/${fileName}`
+
+      const { error: storageError } = await supabase.storage.from("course-materials").remove([filePathInStorage])
+      if (storageError) console.error("Error deleting file from storage:", storageError)
+
+      const { error: dbError } = await supabase.from("course_materials").delete().eq("id", materialId)
+      if (dbError) throw dbError
+
+      await fetchMaterials()
+    } catch (error) {
+      console.error("Error deleting material:", error)
     }
   }
 
@@ -147,55 +201,56 @@ export function CourseMaterials({ courseId, materialType, canUpload, title }: Co
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">{title}</h3>
-        {canUpload && (
-          <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Material
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Upload {title}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    value={uploadTitle}
-                    onChange={(e) => setUploadTitle(e.target.value)}
-                    placeholder="Enter material title"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="file">File</Label>
-                  <Input
-                    id="file"
-                    type="file"
-                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                    accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.md"
-                  />
-                </div>
-                <Button
-                  onClick={handleUpload}
-                  disabled={!uploadFile || !uploadTitle.trim() || uploading}
-                  className="w-full"
-                >
-                  {uploading ? (
-                    <>
-                      <LoadingSpinner size="sm" className="mr-2" />
-                      Uploading...
-                    </>
-                  ) : (
-                    "Upload"
-                  )}
+        {user &&
+          canUpload && ( // Only show upload button if user is signed in and has permission
+            <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Material
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Upload {title}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="title">Title</Label>
+                    <Input
+                      id="title"
+                      value={uploadTitle}
+                      onChange={(e) => setUploadTitle(e.target.value)}
+                      placeholder="Enter material title"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="file">File</Label>
+                    <Input
+                      id="file"
+                      type="file"
+                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                      accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.md"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleUpload}
+                    disabled={!uploadFile || !uploadTitle.trim() || uploading}
+                    className="w-full"
+                  >
+                    {uploading ? (
+                      <>
+                        <LoadingSpinner size="sm" className="mr-2" />
+                        Uploading...
+                      </>
+                    ) : (
+                      "Upload"
+                    )}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
       </div>
 
       {materials.length === 0 ? (
@@ -203,6 +258,7 @@ export function CourseMaterials({ courseId, materialType, canUpload, title }: Co
           <CardContent className="py-8 text-center">
             <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500 dark:text-gray-400">No materials uploaded yet</p>
+            {!user && <p className="text-sm text-gray-500 mt-2">Sign in to upload materials!</p>}
           </CardContent>
         </Card>
       ) : (
@@ -220,19 +276,52 @@ export function CourseMaterials({ courseId, materialType, canUpload, title }: Co
                       </Badge>
                     </div>
                     <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      <span>By {material.uploader?.display_name || "Anonymous"}</span>
+                      <span>By {material.uploader.display_name}</span>
                       <div className="flex items-center">
                         <Calendar className="h-4 w-4 mr-1" />
                         {format(new Date(material.created_at), "MMM d, yyyy")}
                       </div>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={material.file_url} target="_blank" rel="noopener noreferrer">
-                      <Download className="h-4 w-4 mr-2" />
-                      Download
-                    </a>
-                  </Button>
+                  <div className="flex space-x-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={material.file_url} target="_blank" rel="noopener noreferrer">
+                        <Download className="h-4 w-4 mr-2" />
+                        Download
+                      </a>
+                    </Button>
+                    {user &&
+                      (isOrganizerForCourse ||
+                        profile?.role === "main_organizer" ||
+                        user.id === material.uploader_id) && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600">
+                              <Trash className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete this material and its
+                                associated file.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() =>
+                                  handleDeleteMaterial(material.id, material.file_url, material.uploader_id)
+                                }
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

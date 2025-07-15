@@ -1,11 +1,11 @@
 "use client"
 
-import type React from "react"
-
-import { createContext, useContext, useEffect, useState } from "react"
-import type { User, Session } from "@supabase/supabase-js"
+import { createContext, useState, useEffect, useContext, useCallback, type ReactNode } from "react"
 import { supabase } from "@/lib/supabase"
-import type { Profile } from "@/lib/auth"
+import type { User } from "@supabase/supabase-js"
+import { type Profile, getCurrentProfile, getCurrentUser } from "@/lib/auth"
+import { LoadingSpinner } from "@/components/ui/loading-spinner"
+import { usePathname, useRouter } from "next/navigation"
 
 interface AuthContextType {
   user: User | null
@@ -14,67 +14,100 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  profile: null,
-  loading: true,
-  refreshProfile: async () => {},
-})
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export const useAuth = () => {
-  const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider")
-  }
-  return context
-}
-
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const router = useRouter()
+  const pathname = usePathname()
 
-  const fetchProfile = async (userId: string) => {
+  const fetchUserData = useCallback(async () => {
+    setLoading(true)
     try {
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
-      if (error && error.code !== "PGRST116") throw error
-      setProfile(data || null)
-    } catch (error) {
-      console.error("Error fetching profile:", error)
-      setProfile(null)
-    }
-  }
+      const currentUser = await getCurrentUser()
+      setUser(currentUser)
 
-  const refreshProfile = async () => {
-    if (user) {
-      await fetchProfile(user.id)
+      if (currentUser) {
+        const currentProfile = await getCurrentProfile()
+        setProfile(currentProfile)
+
+        // Redirect to onboarding if profile exists but enrollment is missing
+        // This is a basic check; a more robust check might involve an 'onboarded' flag
+        if (currentProfile && pathname !== "/onboarding") {
+          const { data: enrollment, error } = await supabase
+            .from("enrollments")
+            .select("*", { count: "exact" })
+            .eq("user_id", currentUser.id)
+            .limit(1)
+
+          if (error) {
+            console.error("Error checking enrollment status:", error)
+          }
+
+          if (!enrollment || enrollment.length === 0) {
+            // Check if the current page is not already onboarding
+            if (pathname !== "/onboarding" && !pathname.startsWith("/auth")) {
+              router.push("/onboarding")
+            }
+          }
+        }
+      } else {
+        setProfile(null)
+      }
+    } catch (error) {
+      console.error("Failed to fetch user or profile data:", error)
+      setUser(null)
+      setProfile(null)
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [pathname, router])
 
   useEffect(() => {
-    // This single, robust handler manages all auth state changes.
-    const handleAuthChange = async (session: Session | null) => {
-      try {
-        const currentUser = session?.user ?? null
-        setUser(currentUser)
-        if (currentUser) {
-          await fetchProfile(currentUser.id)
-        } else {
-          setProfile(null)
-        }
-      } finally {
-        // This is crucial: setLoading(false) is ALWAYS called,
-        // preventing the app from getting stuck.
-        setLoading(false)
+    fetchUserData()
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth state changed:", event, session)
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED") {
+        fetchUserData()
       }
-    }
-    // Listen for auth changes. The listener is called immediately with the current session.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      handleAuthChange(session)
     })
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => {
+      authListener?.unsubscribe()
+    }
+  }, [fetchUserData])
 
-  return <AuthContext.Provider value={{ user, profile, loading, refreshProfile }}>{children}</AuthContext.Provider>
+  const refreshProfile = useCallback(async () => {
+    if (user) {
+      try {
+        const updatedProfile = await getCurrentProfile()
+        setProfile(updatedProfile)
+      } catch (error) {
+        console.error("Error refreshing profile:", error)
+      }
+    }
+  }, [user])
+
+  const value = { user, profile, loading, refreshProfile }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <LoadingSpinner size="lg" />
+      </div>
+    )
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export const useAuth = () => {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider")
+  }
+  return context
 }
