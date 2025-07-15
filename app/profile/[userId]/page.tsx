@@ -1,12 +1,9 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth/auth-provider"
 import { supabase } from "@/lib/supabase"
-import { updateUserProfile, uploadAvatar } from "@/lib/auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
-import { Trophy, Calendar, Edit, Save, X, Camera } from "lucide-react"
+import { Trophy, Calendar, Edit, Save, X } from "lucide-react"
 import { format } from "date-fns"
 
 interface Profile {
@@ -46,7 +43,7 @@ interface ProfilePageProps {
 }
 
 export default function ProfilePage({ params }: ProfilePageProps) {
-  const { user, profile: currentAuthProfile, loading: authLoading, refreshProfile } = useAuth()
+  const { user, profile: currentProfile, loading: authLoading, refreshProfile } = useAuth()
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [creditHistory, setCreditHistory] = useState<CreditTransaction[]>([])
@@ -56,9 +53,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
     display_name: "",
     bio: "",
   })
-  const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
-  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const isOwnProfile = user?.id === params.userId
 
@@ -114,29 +109,24 @@ export default function ProfilePage({ params }: ProfilePageProps) {
   }
 
   const handleSaveProfile = async () => {
-    if (!isOwnProfile || !user) return
+    if (!isOwnProfile) return
 
     setSaving(true)
     try {
-      let newAvatarUrl = profile?.avatar_url
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          display_name: editForm.display_name,
+          bio: editForm.bio || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user!.id)
 
-      // Upload new avatar if selected
-      if (profilePictureFile) {
-        newAvatarUrl = await uploadAvatar(user.id, profilePictureFile)
-      }
-
-      // Update profile in database
-      await updateUserProfile(user.id, {
-        display_name: editForm.display_name,
-        bio: editForm.bio || null,
-        avatar_url: newAvatarUrl,
-      })
+      if (error) throw error
 
       await fetchProfileData()
-      await refreshProfile() // Refresh the AuthProvider's profile state
+      await refreshProfile()
       setEditing(false)
-      setProfilePictureFile(null) // Clear the selected file
-      if (avatarInputRef.current) avatarInputRef.current.value = "" // Clear file input value
     } catch (error) {
       console.error("Error updating profile:", error)
     } finally {
@@ -149,15 +139,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
       display_name: profile?.display_name || "",
       bio: profile?.bio || "",
     })
-    setProfilePictureFile(null) // Clear selected file on cancel
-    if (avatarInputRef.current) avatarInputRef.current.value = "" // Clear file input value
     setEditing(false)
-  }
-
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setProfilePictureFile(e.target.files[0])
-    }
   }
 
   if (authLoading || loading) {
@@ -182,8 +164,6 @@ export default function ProfilePage({ params }: ProfilePageProps) {
     )
   }
 
-  const displayAvatarUrl = profilePictureFile ? URL.createObjectURL(profilePictureFile) : profile.avatar_url || ""
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -192,51 +172,12 @@ export default function ProfilePage({ params }: ProfilePageProps) {
           <CardHeader>
             <div className="flex items-start justify-between">
               <div className="flex items-start space-x-6">
-                <div className="relative group">
-                  <Avatar className="h-24 w-24">
-                    <AvatarImage
-                      src={displayAvatarUrl || "/placeholder.svg"}
-                      alt={`${profile.display_name}'s avatar`}
-                    />
-                    <AvatarFallback className="text-2xl">{profile.display_name.charAt(0).toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  {isOwnProfile && editing && (
-                    <>
-                      <input
-                        type="file"
-                        ref={avatarInputRef}
-                        className="hidden"
-                        accept="image/*"
-                        onChange={handleAvatarChange}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute bottom-0 right-0 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center"
-                        onClick={() => avatarInputRef.current?.click()}
-                        title="Change profile picture"
-                      >
-                        <Camera className="h-4 w-4" />
-                        <span className="sr-only">Change profile picture</span>
-                      </Button>
-                      {profilePictureFile && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-black/50 text-white hover:bg-black/70"
-                          onClick={() => {
-                            setProfilePictureFile(null)
-                            if (avatarInputRef.current) avatarInputRef.current.value = ""
-                          }}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </div>
+                <Avatar className="h-24 w-24">
+                  <AvatarImage src={profile.avatar_url || ""} />
+                  <AvatarFallback className="text-2xl">{profile.display_name.charAt(0).toUpperCase()}</AvatarFallback>
+                </Avatar>
                 <div className="flex-1">
-                  {editing && isOwnProfile ? (
+                  {editing ? (
                     <div className="space-y-4">
                       <div>
                         <Label htmlFor="display_name">Display Name</Label>

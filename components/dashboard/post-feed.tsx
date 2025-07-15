@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
@@ -10,8 +10,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
-import { formatDistanceToNow } from "date-fns"
-import { MessageCircle, Send, Trash, ImageIcon, X } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,12 +21,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Input } from "@/components/ui/input"
+import { formatDistanceToNow } from "date-fns"
+import { MessageCircle, Send, ImageIcon, Trash2 } from "lucide-react"
+import Image from "next/image"
 
 interface Post {
   id: string
   content: string
-  image_url?: string // Added image_url
+  image_url?: string
   created_at: string
   author: {
     id: string
@@ -52,29 +52,21 @@ interface Comment {
 interface PostFeedProps {
   courseId?: string
   title?: string
+  isOrganizer?: boolean
 }
 
-export function PostFeed({ courseId, title = "General Discussion" }: PostFeedProps) {
+export function PostFeed({ courseId, title = "General Discussion", isOrganizer = false }: PostFeedProps) {
   const { user, profile } = useAuth()
   const [posts, setPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
-  const [newPostContent, setNewPostContent] = useState("")
-  const [newPostImage, setNewPostImage] = useState<File | null>(null)
+  const [newPost, setNewPost] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set())
   const [newComments, setNewComments] = useState<Record<string, string>>({})
-  const imageInputRef = useRef<HTMLInputElement>(null)
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
 
-  const isOrganizerOrMain =
-    profile?.role === "main_organizer" ||
-    (profile?.id &&
-      courseId &&
-      profile.id === user?.id &&
-      profile?.role === "student" &&
-      posts.some((p) => p.author.id === profile.id && p.author.id === user?.id)) // Simplified check, will need proper organizer check
-  const isUserOrganizerForCourse =
-    profile?.role === "main_organizer" ||
-    (profile && courseId && posts.some((p) => p.author.id === profile.id && p.author.id === user?.id)) // A more robust check might be needed.
+  const canModerate = profile?.role === "main_organizer" || isOrganizer
 
   useEffect(() => {
     fetchPosts()
@@ -116,54 +108,56 @@ export function PostFeed({ courseId, title = "General Discussion" }: PostFeedPro
     }
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setNewPostImage(e.target.files[0])
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setSelectedImage(file)
+      const reader = new FileReader()
+      reader.onload = (e) => setImagePreview(e.target?.result as string)
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const uploadImage = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split(".").pop()
+      const fileName = `${user!.id}/${Date.now()}.${fileExt}`
+
+      const { data, error } = await supabase.storage.from("post-images").upload(fileName, file)
+
+      if (error) throw error
+
+      const { data: urlData } = supabase.storage.from("post-images").getPublicUrl(fileName)
+
+      return urlData.publicUrl
+    } catch (error) {
+      console.error("Error uploading image:", error)
+      return null
     }
   }
 
   const handleSubmitPost = async () => {
-    if (!newPostContent.trim() && !newPostImage) return
-    if (!user) {
-      alert("Please sign in to post.")
-      return
-    }
+    if (!newPost.trim() || !user) return
 
     setSubmitting(true)
-    let imageUrl = null
-
     try {
-      if (newPostImage) {
-        const fileExt = newPostImage.name.split(".").pop()
-        const fileName = `${user.id}/${Date.now()}.${fileExt}`
-        const { error: uploadError } = await supabase.storage.from("post-images").upload(fileName, newPostImage)
-
-        if (uploadError) throw uploadError
-
-        const { data: urlData } = supabase.storage.from("post-images").getPublicUrl(fileName)
-        imageUrl = urlData.publicUrl
+      let imageUrl = null
+      if (selectedImage) {
+        imageUrl = await uploadImage(selectedImage)
       }
 
       const { error } = await supabase.from("posts").insert({
-        content: newPostContent.trim(),
-        image_url: imageUrl,
+        content: newPost.trim(),
         author_id: user.id,
         course_id: courseId || null,
+        image_url: imageUrl,
       })
 
       if (error) throw error
 
-      // Award credits for posting
-      await supabase.from("credit_transactions").insert({
-        user_id: user.id,
-        amount: 2,
-        reason: courseId ? `Post in ${title}` : "Post in General Discussion",
-        issuer_id: user.id, // Self-issued credit
-      })
-
-      setNewPostContent("")
-      setNewPostImage(null)
-      if (imageInputRef.current) imageInputRef.current.value = ""
+      setNewPost("")
+      setSelectedImage(null)
+      setImagePreview(null)
       await fetchPosts()
     } catch (error) {
       console.error("Error creating post:", error)
@@ -172,13 +166,31 @@ export function PostFeed({ courseId, title = "General Discussion" }: PostFeedPro
     }
   }
 
+  const handleDeletePost = async (postId: string) => {
+    try {
+      const { error } = await supabase.from("posts").delete().eq("id", postId)
+
+      if (error) throw error
+      await fetchPosts()
+    } catch (error) {
+      console.error("Error deleting post:", error)
+    }
+  }
+
+  const handleDeleteComment = async (commentId: string) => {
+    try {
+      const { error } = await supabase.from("comments").delete().eq("id", commentId)
+
+      if (error) throw error
+      await fetchPosts()
+    } catch (error) {
+      console.error("Error deleting comment:", error)
+    }
+  }
+
   const handleSubmitComment = async (postId: string) => {
     const commentContent = newComments[postId]
-    if (!commentContent?.trim()) return
-    if (!user) {
-      alert("Please sign in to comment.")
-      return
-    }
+    if (!commentContent?.trim() || !user) return
 
     try {
       const { error } = await supabase.from("comments").insert({
@@ -189,61 +201,10 @@ export function PostFeed({ courseId, title = "General Discussion" }: PostFeedPro
 
       if (error) throw error
 
-      // Award credits for commenting
-      await supabase.from("credit_transactions").insert({
-        user_id: user.id,
-        amount: 1,
-        reason: "Comment on a post",
-        issuer_id: user.id, // Self-issued credit
-      })
-
       setNewComments((prev) => ({ ...prev, [postId]: "" }))
       await fetchPosts()
     } catch (error) {
       console.error("Error creating comment:", error)
-    }
-  }
-
-  const handleDeletePost = async (postId: string, postImageUrl?: string) => {
-    if (!user || (!isOrganizerOrMain && !posts.find((p) => p.id === postId && p.author.id === user.id))) {
-      alert("You do not have permission to delete this post.")
-      return
-    }
-
-    try {
-      // Delete associated image from storage first
-      if (postImageUrl) {
-        const fileName = postImageUrl.split("/").pop()
-        if (fileName) {
-          const path = `${postImageUrl.split("/")[postImageUrl.split("/").length - 2]}/${fileName}` // user_id/filename
-          const { error: storageError } = await supabase.storage.from("post-images").remove([path])
-          if (storageError) console.error("Error deleting post image from storage:", storageError)
-        }
-      }
-
-      const { error } = await supabase.from("posts").delete().eq("id", postId)
-      if (error) throw error
-      await fetchPosts()
-    } catch (error) {
-      console.error("Error deleting post:", error)
-    }
-  }
-
-  const handleDeleteComment = async (commentId: string) => {
-    if (
-      !user ||
-      (!isOrganizerOrMain && !posts.some((p) => p.comments.some((c) => c.id === commentId && c.author.id === user.id)))
-    ) {
-      alert("You do not have permission to delete this comment.")
-      return
-    }
-
-    try {
-      const { error } = await supabase.from("comments").delete().eq("id", commentId)
-      if (error) throw error
-      await fetchPosts()
-    } catch (error) {
-      console.error("Error deleting comment:", error)
     }
   }
 
@@ -274,49 +235,60 @@ export function PostFeed({ courseId, title = "General Discussion" }: PostFeedPro
       </div>
 
       {/* New Post Form */}
-      {user && ( // Only show if user is signed in
+      {user && (
         <Card>
           <CardContent className="pt-6">
             <div className="space-y-4">
               <Textarea
                 placeholder="Share your thoughts, ask questions, or start a discussion..."
-                value={newPostContent}
-                onChange={(e) => setNewPostContent(e.target.value)}
+                value={newPost}
+                onChange={(e) => setNewPost(e.target.value)}
                 className="min-h-[100px]"
               />
-              {newPostImage && (
-                <div className="relative w-32 h-32">
-                  <img
-                    src={URL.createObjectURL(newPostImage) || "/placeholder.svg"}
+
+              {imagePreview && (
+                <div className="relative">
+                  <Image
+                    src={imagePreview || "/placeholder.svg"}
                     alt="Preview"
-                    className="w-full h-full object-cover rounded-md"
+                    width={200}
+                    height={200}
+                    className="rounded-lg object-cover"
                   />
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-black/50 text-white hover:bg-black/70"
+                    variant="destructive"
+                    size="sm"
+                    className="absolute top-2 right-2"
                     onClick={() => {
-                      setNewPostImage(null)
-                      if (imageInputRef.current) imageInputRef.current.value = ""
+                      setSelectedImage(null)
+                      setImagePreview(null)
                     }}
                   >
-                    <X className="h-4 w-4" />
+                    Remove
                   </Button>
                 </div>
               )}
+
               <div className="flex justify-between items-center">
-                <Button variant="outline" size="sm" onClick={() => imageInputRef.current?.click()}>
-                  <ImageIcon className="h-4 w-4 mr-2" />
-                  Attach Image
-                </Button>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  ref={imageInputRef}
-                  className="hidden"
-                  onChange={handleImageChange}
-                />
-                <Button onClick={handleSubmitPost} disabled={(!newPostContent.trim() && !newPostImage) || submitting}>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                    id="image-upload"
+                  />
+                  <label htmlFor="image-upload">
+                    <Button variant="outline" size="sm" asChild>
+                      <span className="cursor-pointer">
+                        <ImageIcon className="h-4 w-4 mr-2" />
+                        Attach Image
+                      </span>
+                    </Button>
+                  </label>
+                </div>
+
+                <Button onClick={handleSubmitPost} disabled={!newPost.trim() || submitting}>
                   {submitting ? (
                     <>
                       <LoadingSpinner size="sm" className="mr-2" />
@@ -341,7 +313,6 @@ export function PostFeed({ courseId, title = "General Discussion" }: PostFeedPro
           <Card>
             <CardContent className="py-8 text-center">
               <p className="text-gray-500 dark:text-gray-400">No posts yet. Be the first to start a discussion!</p>
-              {!user && <p className="text-sm text-gray-500 mt-2">Sign in to share your thoughts!</p>}
             </CardContent>
           </Card>
         ) : (
@@ -363,26 +334,24 @@ export function PostFeed({ courseId, title = "General Discussion" }: PostFeedPro
                       </div>
                     </div>
                   </div>
-                  {user && (isOrganizerOrMain || user.id === post.author.id) && (
+
+                  {canModerate && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600">
-                          <Trash className="h-4 w-4" />
+                        <Button variant="ghost" size="sm">
+                          <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                          <AlertDialogTitle>Delete Post</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete your post and its associated
-                            data.
+                            Are you sure you want to delete this post? This action cannot be undone.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDeletePost(post.id, post.image_url)}>
-                            Delete
-                          </AlertDialogAction>
+                          <AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
@@ -390,13 +359,18 @@ export function PostFeed({ courseId, title = "General Discussion" }: PostFeedPro
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{post.content}</p>
+                <p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap mb-4">{post.content}</p>
+
                 {post.image_url && (
-                  <img
-                    src={post.image_url || "/placeholder.svg"}
-                    alt="Attached image"
-                    className="mt-4 max-h-96 w-auto rounded-md object-contain"
-                  />
+                  <div className="mb-4">
+                    <Image
+                      src={post.image_url || "/placeholder.svg"}
+                      alt="Post attachment"
+                      width={500}
+                      height={300}
+                      className="rounded-lg object-cover max-w-full h-auto"
+                    />
+                  </div>
                 )}
 
                 {/* Comments Section */}
@@ -424,55 +398,50 @@ export function PostFeed({ courseId, title = "General Discussion" }: PostFeedPro
                           </Avatar>
                           <div className="flex-1">
                             <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <span className="font-medium text-sm">
-                                  {comment.author?.display_name || "Anonymous User"}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
-                                </span>
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-medium text-sm">
+                                    {comment.author?.display_name || "Anonymous User"}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
+                                  </span>
+                                </div>
+                                {canModerate && (
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button variant="ghost" size="sm">
+                                        <Trash2 className="h-3 w-3 text-red-500" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete Comment</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Are you sure you want to delete this comment? This action cannot be undone.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleDeleteComment(comment.id)}>
+                                          Delete
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
                               </div>
                               <p className="text-sm">{comment.content}</p>
                             </div>
                           </div>
-                          {user && (isOrganizerOrMain || user.id === comment.author.id) && (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-red-500 hover:text-red-600 self-center"
-                                >
-                                  <Trash className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This action cannot be undone. This will permanently delete your comment.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteComment(comment.id)}>
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          )}
                         </div>
                       ))}
 
                       {/* New Comment Form */}
-                      {user && ( // Only show if user is signed in
+                      {user && (
                         <div className="flex space-x-3">
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src={profile?.avatar_url || ""} />
-                            <AvatarFallback className="text-xs">
-                              {profile?.display_name?.charAt(0).toUpperCase() || "U"}
-                            </AvatarFallback>
+                            <AvatarFallback className="text-xs">You</AvatarFallback>
                           </Avatar>
                           <div className="flex-1 space-y-2">
                             <Textarea
