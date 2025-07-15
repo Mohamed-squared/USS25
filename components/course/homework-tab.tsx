@@ -243,10 +243,10 @@ export function HomeworkTab({ courseId, isOrganizer }: HomeworkTabProps) {
 
       // Award credits for the grade
       await supabase.rpc("award_credits", {
-        user_id: selectedSubmission.student.id,
-        amount: grade,
-        reason: `Homework grade: ${grade} credits`,
-        issuer_id: user!.id,
+        user_id: selectedSubmission.student.id, // The student being graded
+        credit_amount: grade,
+        credit_reason: `Homework grade: ${grade} credits`,
+        issuer_id: user!.id, // The organizer who is grading
       })
 
       setGrading({ grade: "", feedback: "" })

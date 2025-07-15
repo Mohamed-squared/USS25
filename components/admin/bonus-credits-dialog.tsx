@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { Trophy } from "lucide-react"
@@ -79,8 +79,8 @@ export function BonusCreditsDialog({ courseId }: BonusCreditsDialogProps) {
 
       const { error } = await supabase.rpc("award_credits", {
         user_id: selectedStudent,
-        amount: creditAmount,
-        reason: reason.trim(),
+        credit_amount: creditAmount,
+        credit_reason: reason.trim(),
         issuer_id: user!.id,
       })
 
@@ -109,6 +109,9 @@ export function BonusCreditsDialog({ courseId }: BonusCreditsDialogProps) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Award Bonus Credits</DialogTitle>
+          <DialogDescription>
+            Select a student and specify the amount and reason for the bonus credits.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           {loading ? (

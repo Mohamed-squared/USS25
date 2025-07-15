@@ -121,9 +121,10 @@ export function CourseMaterials({
       // Award credits for student contributions
       if (materialType === "student_contribution") {
         await supabase.rpc("award_credits", {
-          user_id: user.id,
-          amount: 10,
-          reason: "Shared course material (student contribution)",
+          user_id: user.id, // The student who contributed
+          credit_amount: 10,
+          credit_reason: "Shared course material (student contribution)",
+          issuer_id: user.id, // The action is initiated by the student
         })
       }
 
