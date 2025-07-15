@@ -52,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    // This single, robust handler manages all auth state changes.
     const handleAuthChange = async (session: Session | null) => {
       try {
         const currentUser = session?.user ?? null
@@ -62,14 +63,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(null)
         }
       } finally {
+        // This is crucial: setLoading(false) is ALWAYS called,
+        // preventing the app from getting stuck.
         setLoading(false)
       }
     }
-
-    supabase.auth.getSession().then(({ data: { session } }) => handleAuthChange(session))
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => handleAuthChange(session))
+    // Listen for auth changes. The listener is called immediately with the current session.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      handleAuthChange(session)
+    })
 
     return () => subscription.unsubscribe()
   }, [])
